@@ -1,0 +1,55 @@
+name: "privilege_escalation_containment"
+description: "Detects unauthorized sudoers modifications, shadow file tampering, or rogue UID 0 account additions, immediately killing active interactive sessions and locking the offending user account."
+category: "Identity & Privileges"
+severity: "high"
+ui_icon: "user-x"
+
+trigger:
+  source: "auditd"
+  rule_id: "4001" # Auditd sudoers / passwd / shadow change event
+
+conditions:
+  - field: "target_user"
+    operator: "exists"
+  - field: "target_user"
+    operator: "not_in"
+    value: ["root", "soar", "ansible"] # Never lock primary management accounts
+
+actions:
+  # Step 1: Kill all active processes and TTY shells belonging to the compromised user
+  - name: "terminate_user_sessions"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "pkill -KILL -u '{{ alert.target_user }}' || true"
+
+  # Step 2: Lock the user account in /etc/shadow
+  - name: "lock_user_account"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "usermod -L '{{ alert.target_user }}'"
+
+  # Step 3: Expire user password and revoke sudo tokens
+  - name: "expire_password_and_revoke_sudo"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "passwd -l '{{ alert.target_user }}' && rm -f /var/run/sudo/ts/'{{ alert.target_user }}' || true"
+
+  # Step 4: Notify SOC
+  - name: "notify_privilege_lock"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "🔒 *Account Locked*: User `{{ alert.target_user }}` locked on `{{ alert.target_host }}` due to privilege escalation attempt."
+
+rollback:
+  - name: "unlock_user_account"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "usermod -U '{{ alert.target_user }}'"

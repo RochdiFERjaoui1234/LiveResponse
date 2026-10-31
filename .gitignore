@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+var/
+dist/
+build/
+*.spec
+LiveResponse.exe
+live-response
+config/secrets.local.yaml
+.venv/

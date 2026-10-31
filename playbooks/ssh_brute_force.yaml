@@ -1,0 +1,49 @@
+name: "ssh_brute_force_response"
+description: "Detects repeated SSH authentication failures (Wazuh rule 5710), enriches IP with Threat Intel, and requests 1-click analyst approval before applying a firewall drop."
+category: "Access & Authentication"
+severity: "medium"
+ui_icon: "shield"
+
+trigger:
+  source: "wazuh"
+  rule_id: "5710"
+
+conditions:
+  - field: "src_ip"
+    operator: "not_in_whitelist"
+
+actions:
+  # Step 1: Threat intelligence enrichment via external API
+  - name: "enrich_virustotal"
+    type: "http"
+    always_execute: true
+    params:
+      method: "GET"
+      url: "https://www.virustotal.com/api/v3/ip_addresses/{{ alert.src_ip }}"
+      headers:
+        x-apikey: "{{ secrets.vt_api_key }}"
+
+  # Step 2: Block attacker source IP with approval gate
+  - name: "block_source_ip"
+    type: "ssh"
+    requires_approval: true
+    params:
+      target: "production_server"
+      command: "iptables -I INPUT -s {{ alert.src_ip }} -j DROP"
+
+  # Step 3: Broadcast notification
+  - name: "notify_slack"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "🛡️ *SSH Brute Force Blocked* — Target: `{{ alert.target_host }}` | Offender IP: `{{ alert.src_ip }}`"
+
+rollback:
+  - name: "unblock_source_ip"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -D INPUT -s {{ alert.src_ip }} -j DROP || true"

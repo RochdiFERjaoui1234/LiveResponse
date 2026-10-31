@@ -1,0 +1,22 @@
+# ==============================================================================
+# SUPER SOAR SAFETY WHITELIST
+# Any IP or subnet in this file will NEVER be blocked or isolated by any playbook.
+# ==============================================================================
+
+# Loopback
+127.0.0.0/8
+::1
+
+# Private management subnets & internal gateways
+10.0.0.0/8
+172.16.0.0/12
+192.168.0.0/16
+
+# Public DNS resolvers (prevent accidental isolation)
+1.1.1.1
+8.8.8.8
+8.8.4.4
+9.9.9.9
+
+# SOC / Management VM dedicated IPs
+203.0.113.10

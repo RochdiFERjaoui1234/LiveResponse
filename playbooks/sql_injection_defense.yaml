@@ -1,0 +1,46 @@
+name: "sql_injection_containment"
+description: "Detects active SQL Injection payloads, automated sqlmap probes, or data exfiltration attempts, automatically dropping attacker connections and blocking the source IP."
+category: "Web & Application Security"
+severity: "high"
+ui_icon: "database"
+
+trigger:
+  source: "waf"
+  category: "sqli"
+  rule_id: "942100" # OWASP ModSecurity Core Rule Set SQLi signature
+
+conditions:
+  - field: "src_ip"
+    operator: "not_in_whitelist"
+
+actions:
+  # Step 1: Immediately block the attacking IP address with iptables
+  - name: "block_sqli_source_ip"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -I INPUT -s {{ alert.src_ip }} -j DROP"
+
+  # Step 2: Terminate any active database threads/connections from the offending request
+  - name: "terminate_stale_db_threads"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "mysqladmin processlist 2>/dev/null | grep -i 'SLEEP\\|BENCHMARK' | awk '{print $2}' | xargs -r -n1 mysqladmin kill || true"
+
+  # Step 3: Broadcast SOC notification
+  - name: "notify_soc_sqli"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "🛡️ *SQL Injection Blocked*: Attacker IP `{{ alert.src_ip }}` dropped on `{{ alert.target_host }}` (Rule: `{{ alert.rule_id }}`)."
+
+rollback:
+  - name: "unblock_sqli_ip"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -D INPUT -s {{ alert.src_ip }} -j DROP || true"

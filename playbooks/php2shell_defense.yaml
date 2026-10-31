@@ -1,0 +1,56 @@
+name: "php2shell_webshell_defense"
+description: "Mitigates active PHP webshells, PHP2Shell exploitation, and arbitrary PHP code execution by revoking file permissions, isolating malicious payloads, killing rogue PHP worker processes, and blocking attacker IP."
+category: "Web & Application Security"
+severity: "critical"
+ui_icon: "code"
+
+trigger:
+  source: "wazuh"
+  category: "webshell"
+  rule_id: "31106" # Web server 500 error / webshell signature / file integrity alert
+
+conditions:
+  - field: "src_ip"
+    operator: "not_in_whitelist"
+  - field: "file_path"
+    operator: "exists"
+
+actions:
+  # Step 1: Immediately strip read/write/execute permissions from the suspect PHP payload
+  - name: "lock_and_quarantine_file"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "chmod 000 '{{ alert.file_path }}' && mkdir -p /var/quarantine && mv '{{ alert.file_path }}' /var/quarantine/$(date +%s)_$(basename '{{ alert.file_path }}').bak"
+
+  # Step 2: Terminate any active PHP-FPM / Apache child processes executing the webshell or reverse shell
+  - name: "kill_rogue_php_processes"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "pkill -9 -f 'php.*{{ alert.file_path }}' || pkill -9 -f 'sh -i' || pkill -9 -f 'bash -i' || true"
+
+  # Step 3: Block the attacker source IP at host level via iptables
+  - name: "block_attacker_ip"
+    type: "ssh"
+    requires_approval: false
+    params:
+      target: "production_server"
+      command: "iptables -I INPUT -s {{ alert.src_ip }} -j DROP"
+
+  # Step 4: Notify SOC channel
+  - name: "notify_soc_containment"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "🚨 *PHP2Shell Webshell Neutralized* on host `{{ alert.target_host }}`\n• Attacker IP: `{{ alert.src_ip }}` (Blocked)\n• File Quarantined: `{{ alert.file_path }}`\n• Processes Killed: PHP-FPM / Reverse shell workers"
+
+rollback:
+  - name: "restore_file_and_unblock_ip"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -D INPUT -s {{ alert.src_ip }} -j DROP || true"

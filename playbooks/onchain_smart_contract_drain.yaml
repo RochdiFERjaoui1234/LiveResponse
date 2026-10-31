@@ -1,0 +1,59 @@
+name: "onchain_smart_contract_drain"
+description: "Detects flash-loan attacks, reentrancy exploits, or abnormal liquidity drainage on DeFi smart contracts, instantly invoking emergency pause() and revoking token allowances via on-chain RPC."
+category: "On-Chain & Web3 Security"
+severity: "critical"
+ui_icon: "link"
+
+trigger:
+  source: "web3_sentry"
+  category: "defi_exploit"
+  rule_id: "88001" # Abnormal ERC20 transfer volume or flashloan drain signature
+
+conditions:
+  - field: "target_contract"
+    operator: "exists"
+
+actions:
+  # Step 1: Immediately invoke the emergency pause() circuit breaker on the smart contract
+  - name: "emergency_pause_contract"
+    type: "web3"
+    params:
+      network: "ethereum"
+      target_contract: "{{ alert.target_contract }}"
+      method: "pause"
+      abi_method_signature: "pause()"
+
+  # Step 2: Revoke token allowances to prevent rogue siphoning
+  - name: "revoke_liquidity_allowances"
+    type: "web3"
+    params:
+      network: "ethereum"
+      target_contract: "{{ alert.target_contract }}"
+      method: "revoke_approval"
+      abi_method_signature: "approve(address,uint256)"
+
+  # Step 3: Block attacker's node/relayer IP if identified at the gateway
+  - name: "block_attacker_edge_ip"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -I INPUT -s {{ alert.src_ip }} -j DROP"
+
+  # Step 4: Emergency alert to Multisig Signers & Web3 War Room
+  - name: "notify_multisig_guardians"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "🚨🚨 *ON-CHAIN ATTACK CONTAINED: SMART CONTRACT PAUSED* 🚨🚨\n• Contract Address: `{{ alert.target_contract }}`\n• Circuit Breaker `pause()`: TRIGGERED\n• Allowances Revoked: YES\n• Network: ETHEREUM MAINNET"
+
+rollback:
+  - name: "emergency_unpause_contract"
+    type: "web3"
+    params:
+      network: "ethereum"
+      target_contract: "{{ alert.target_contract }}"
+      method: "unpause"
+      abi_method_signature: "unpause()"

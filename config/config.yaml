@@ -1,0 +1,47 @@
+server:
+  host: "0.0.0.0"
+  port: 8088
+
+engine:
+  dry_run: true  # Set to false to execute real commands on target hosts
+  max_actions_per_hour: 150
+  approval_timeout_seconds: 900
+  state_db: "./var/state.db"
+  audit_log: "./var/audit.jsonl"
+  playbooks_dir: "./playbooks"
+  whitelist_file: "./config/whitelist.txt"
+
+# Remote Targets where SOAR executes response actions
+targets:
+  production_server:
+    type: "ssh"
+    host: "127.0.0.1"
+    port: 22
+    user: "soar"
+    key_file: "./config/id_ed25519"
+    known_hosts: ""
+
+  production_agent:
+    type: "agent" # High-performance Go agent on production host
+    url: "http://127.0.0.1:8099/exec"
+    hmac_key_env: "SOAR_AGENT_KEY"
+
+# Secrets and external integration tokens
+secrets:
+  vt_api_key: "${VT_API_KEY}"
+  abuseipdb_key: "${ABUSEIPDB_KEY}"
+  slack_webhook: "${SLACK_WEBHOOK}"
+  cloudflare_api_token: "${CLOUDFLARE_API_TOKEN}"
+  cloudflare_zone_id: "${CLOUDFLARE_ZONE_ID}"
+
+notifications:
+  slack:
+    enabled: false
+    webhook_env: "SLACK_WEBHOOK"
+    channel: "#soc-alerts"
+
+# Encrypted management tunnel (Cloudflare WARP).
+# Requires the Cloudflare WARP client installed on this management server
+# (warp-cli on PATH, or at the standard Windows install location).
+tunnel:
+  provider: "warp"

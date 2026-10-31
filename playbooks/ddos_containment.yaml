@@ -1,0 +1,67 @@
+name: "ddos_flood_mitigation"
+description: "Mitigates Layer 4 SYN/UDP Floods and Layer 7 HTTP request storms by activating kernel SYN cookies, enforcing iptables connection limits, and optionally enabling Cloudflare Under Attack mode."
+category: "Network & Availability"
+severity: "high"
+ui_icon: "activity"
+
+trigger:
+  source: "suricata"
+  category: "dos"
+  rule_id: "200100" # High connection rate / SYN flood / rate limit threshold
+
+conditions:
+  - field: "src_ip"
+    operator: "not_in_whitelist"
+
+actions:
+  # Step 1: Enable kernel TCP SYN Cookies and drop spoofed packets immediately
+  - name: "enable_tcp_syncookies"
+    type: "ssh"
+    always_execute: false
+    params:
+      target: "production_server"
+      command: "sysctl -w net.ipv4.tcp_syncookies=1 net.ipv4.tcp_max_syn_backlog=4096 net.ipv4.tcp_synack_retries=2"
+
+  # Step 2: Enforce per-source connection rate limits on HTTP/HTTPS ports (80, 443)
+  - name: "apply_iptables_connection_limits"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -I INPUT -p tcp -m multiport --dports 80,443 -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset"
+
+  # Step 3: Drop the aggressive flooding source IP
+  - name: "drop_flood_ip"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -I INPUT -s {{ alert.src_ip }} -j DROP"
+
+  # Step 4: Optional Cloudflare under-attack mode or rate-limit API invocation
+  - name: "trigger_cloudflare_under_attack"
+    type: "http"
+    always_execute: false
+    params:
+      method: "PATCH"
+      url: "https://api.cloudflare.com/client/v4/zones/{{ secrets.cloudflare_zone_id }}/settings/security_level"
+      headers:
+        Authorization: "Bearer {{ secrets.cloudflare_api_token }}"
+        Content-Type: "application/json"
+      json:
+        value: "under_attack"
+
+  # Step 5: Notify SOC channel
+  - name: "notify_soc_ddos"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "⚡ *DDoS Flood Mitigated* on `{{ alert.target_host }}`\n• Attacking Source: `{{ alert.src_ip }}` (DROPPED)\n• TCP SYN Cookies: ACTIVE\n• Port 80/443 Connection limit: ACTIVE"
+
+rollback:
+  - name: "remove_connection_limits"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "iptables -D INPUT -s {{ alert.src_ip }} -j DROP || true; iptables -D INPUT -p tcp -m multiport --dports 80,443 -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset || true"

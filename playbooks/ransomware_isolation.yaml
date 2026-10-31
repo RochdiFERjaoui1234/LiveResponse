@@ -1,0 +1,53 @@
+name: "ransomware_isolation"
+description: "Detects canary file modifications, mass file renames (.locked / .crypted), or high-frequency disk writes, immediately severing network interfaces and halting suspect processes."
+category: "Endpoint & Ransomware"
+severity: "critical"
+ui_icon: "alert-triangle"
+
+trigger:
+  source: "edr"
+  category: "ransomware"
+  rule_id: "90001"
+
+conditions:
+  - field: "target_host"
+    operator: "exists"
+
+actions:
+  # Step 1: Sever external network connectivity to prevent C2 communication and lateral encryption spread
+  - name: "isolate_network_interface"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "ip link set eth0 down || ifconfig eth0 down"
+
+  # Step 2: Freeze and kill high-IO rogue processes
+  - name: "terminate_ransomware_processes"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "pkill -9 -f 'encrypt|locker|crypt' || true"
+
+  # Step 3: Trigger snapshot hook / mark host as compromised
+  - name: "create_quarantine_marker"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "touch /var/log/SUPER_SOAR_RANSOMWARE_QUARANTINE.flag && echo 'Host isolated at $(date)' >> /var/log/SUPER_SOAR_RANSOMWARE_QUARANTINE.flag"
+
+  # Step 4: Emergency alert
+  - name: "broadcast_ransomware_containment"
+    type: "http"
+    always_execute: true
+    params:
+      method: "POST"
+      url: "{{ secrets.slack_webhook }}"
+      json:
+        text: "🚨🚨 *EMERGENCY: RANSOMWARE ISOLATION TRIGGERED* 🚨🚨\n• Host: `{{ alert.target_host }}`\n• Network Interface: DISABLED\n• Suspicious Encryptors: KILLED"
+
+rollback:
+  - name: "re_enable_network"
+    type: "ssh"
+    params:
+      target: "production_server"
+      command: "ip link set eth0 up || ifconfig eth0 up"

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Response - Incident Response Console</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Title Bar / Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-logo"><span>LIVE</span></div>
+        <div class="brand-text">
+          <h1>LIVE <span>RESPONSE</span></h1>
+          <span class="brand-subtitle">Out-of-Band Incident Response Platform</span>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <div class="status-indicator" id="system-status-indicator" title="System status">
+          <span class="status-dot"></span>
+          <span class="status-label" id="system-status-text">CONNECTING</span>
+        </div>
+
+        <div class="status-indicator" id="tunnel-control" title="Encrypted Cloudflare WARP tunnel">
+          <span class="status-dot status-dot-tunnel" id="tunnel-status-dot"></span>
+          <span class="status-label" id="tunnel-status-text">TUNNEL: --</span>
+          <button class="btn btn-sm" id="btn-tunnel-up" title="Establish encrypted tunnel">Up</button>
+          <button class="btn btn-sm" id="btn-tunnel-down" title="Close encrypted tunnel">Down</button>
+        </div>
+
+        <div class="dry-run-switch">
+          <label class="switch">
+            <input type="checkbox" id="dry-run-checkbox" checked>
+            <span class="slider round"></span>
+          </label>
+          <span class="switch-label" id="dry-run-label">Dry-Run (Simulation Mode)</span>
+        </div>
+
+        <button class="btn btn-secondary btn-sm" id="btn-open-settings" title="Configure API keys and tokens">
+          Settings
+        </button>
+
+        <button class="btn btn-secondary btn-sm" id="btn-open-studio" title="Define a custom playbook">
+          Custom Playbooks
+        </button>
+
+        <button class="btn btn-secondary btn-sm" id="btn-refresh" title="Refresh live data">
+          Refresh
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <!-- Summary Panel -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-info">
+            <span class="metric-value" id="stat-playbooks">--</span>
+            <span class="metric-title">Loaded Playbooks</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-info">
+            <span class="metric-value" id="stat-total-executions">--</span>
+            <span class="metric-title">Total Incidents Handled</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-info">
+            <span class="metric-value" id="stat-success-executions">--</span>
+            <span class="metric-title">Neutralized Threats</span>
+          </div>
+        </div>
+        <div class="metric-card highlight-metric" id="card-pending-approvals">
+          <div class="metric-info">
+            <span class="metric-value" id="stat-pending-approvals">0</span>
+            <span class="metric-title">Pending Approvals</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pending Approvals Banner (conditionally displayed) -->
+      <section class="section pending-approvals-section" id="pending-approvals-container" style="display: none;">
+        <div class="section-header alert-header">
+          <h2>Sensitive Actions Requiring Analyst Approval</h2>
+          <span class="badge badge-warning">Action blocked until authorized</span>
+        </div>
+        <div class="approval-cards-list" id="approval-cards-list"></div>
+      </section>
+
+      <!-- Response Scenario Catalog -->
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Ready-to-Use Response Scenarios</h2>
+            <p class="section-desc">Predefined defense playbooks. Click "Execute Scenario" to simulate or trigger an automated containment run.</p>
+          </div>
+          <div class="filter-group">
+            <button class="btn-filter active" data-filter="all">All Scenarios</button>
+            <button class="btn-filter" data-filter="On-Chain & Web3 Security">On-Chain / Web3</button>
+            <button class="btn-filter" data-filter="Web & Application Security">Web &amp; PHP</button>
+            <button class="btn-filter" data-filter="Network & Availability">Network / DDoS</button>
+            <button class="btn-filter" data-filter="Access & Authentication">Access</button>
+            <button class="btn-filter" data-filter="Endpoint & Ransomware">Ransomware</button>
+          </div>
+        </div>
+
+        <div class="scenarios-grid" id="scenarios-grid">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- Execution History -->
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Incident Execution History</h2>
+            <p class="section-desc">Audit record of automated containment actions dispatched to target nodes.</p>
+          </div>
+        </div>
+        <div class="table-card">
+          <table class="data-table" id="executions-table">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Playbook</th>
+                <th>Alert / Target</th>
+                <th>Timestamp</th>
+                <th>Actions Run</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="executions-tbody">
+              <tr>
+                <td colspan="6" class="text-center">Loading incident records...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Tamper-Resistant Audit Trail -->
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Out-of-Band Audit Log (JSONL)</h2>
+            <p class="section-desc">Fsync-enforced persistent log records stored on the isolated management plane.</p>
+          </div>
+        </div>
+        <div class="terminal-card">
+          <div class="terminal-body" id="audit-terminal-body">
+            <pre class="terminal-output">Connecting to audit trail...</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal for Triggering Scenarios -->
+    <div class="modal-backdrop" id="trigger-modal" style="display: none;">
+      <div class="modal">
+        <div class="window-header">
+          <span class="window-title" id="modal-title">Execute Scenario: PHP2Shell Defense</span>
+          <div class="window-controls">
+            <button class="modal-close" id="btn-close-modal" title="Close">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <p id="modal-desc" class="modal-description"></p>
+
+          <form id="trigger-form">
+            <div class="form-group">
+              <label for="trigger-src-ip">Attacker Source IP:</label>
+              <input type="text" id="trigger-src-ip" class="form-control" value="198.51.100.45" required>
+              <small class="form-hint">Must not be within the safety whitelist (e.g. 127.0.0.1 or 10.0.0.0/8).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="trigger-target-host">Target Host Node:</label>
+              <input type="text" id="trigger-target-host" class="form-control" value="production_server" required>
+            </div>
+
+            <div class="form-group" id="group-file-path">
+              <label for="trigger-file-path">Suspect Backdoor / Script Path:</label>
+              <input type="text" id="trigger-file-path" class="form-control" value="/var/www/html/uploads/shell.php">
+            </div>
+
+            <div class="form-group" id="group-target-contract" style="display: none;">
+              <label for="trigger-target-contract">Target Smart Contract Address:</label>
+              <input type="text" id="trigger-target-contract" class="form-control" value="0x1f9840a85d5af5bf1d1762f925bdaddc4201f984">
+              <small class="form-hint">EVM target address for on-chain emergency pause/rescue actions.</small>
+            </div>
+
+            <div class="form-group" id="group-target-user">
+              <label for="trigger-target-user">Compromised User:</label>
+              <input type="text" id="trigger-target-user" class="form-control" value="www-data">
+            </div>
+
+            <div class="execution-mode-box">
+              <div class="mode-info">
+                <strong>Execution Mode:</strong>
+                <span id="modal-mode-indicator" class="badge badge-warning">Simulated (Dry-Run)</span>
+              </div>
+              <p class="text-muted text-sm">Dry-Run records all steps without altering production server rules.</p>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-modal">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btn-run-scenario">Execute Response</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for Authoring Custom Playbooks -->
+    <div class="modal-backdrop" id="studio-modal" style="display: none;">
+      <div class="modal modal-lg">
+        <div class="window-header">
+          <span class="window-title">Custom Playbook Builder</span>
+          <div class="window-controls">
+            <button class="modal-close" id="btn-close-studio" title="Close">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Define playbooks in Python with static typing using <code>TypedPlaybook</code>, <code>PlaybookCategory</code>,
+            and <code>@action</code> decorators. Applicable to host containment or on-chain response.
+          </p>
+
+          <form id="studio-form">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+              <div class="form-group" style="flex: 1;">
+                <label for="studio-template-select">Starter Template:</label>
+                <select id="studio-template-select" class="form-control">
+                  <option value="onchain_web3">On-Chain &amp; Web3 Security (Smart Contract Defense)</option>
+                  <option value="web_app">Web Application &amp; RCE Containment</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label for="studio-filename">Playbook Filename (.py):</label>
+                <input type="text" id="studio-filename" class="form-control" value="custom_onchain_guardian.py" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="studio-code-editor">Python Source Code (with Static Types &amp; Enums):</label>
+              <textarea id="studio-code-editor" class="form-control" rows="14" style="font-family: Consolas, 'Courier New', monospace; font-size: 0.82rem; line-height: 1.4; resize: vertical;" required></textarea>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-studio">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btn-deploy-custom-playbook">Compile &amp; Deploy</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal: Bring-Your-Own-Keys -->
+    <div class="modal-backdrop" id="settings-modal" style="display: none;">
+      <div class="modal">
+        <div class="window-header">
+          <span class="window-title">Settings - Integration Keys</span>
+          <div class="window-controls">
+            <button class="modal-close" id="btn-close-settings" title="Close">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Paste your external API keys and tokens. Values are stored locally in
+            <code>config/secrets.local.yaml</code> on this management server and are used for enrichment and notification actions.
+            Leave a field empty to keep the current value.
+          </p>
+
+          <form id="settings-form">
+            <div class="form-group">
+              <label for="settings-cf-token">Cloudflare API Token:</label>
+              <input type="password" id="settings-cf-token" class="form-control" autocomplete="off" placeholder="Cloudflare API token">
+              <small class="form-hint">Current: <span id="current-cf-token">not configured</span></small>
+            </div>
+
+            <div class="form-group">
+              <label for="settings-cf-zone">Cloudflare Zone ID:</label>
+              <input type="text" id="settings-cf-zone" class="form-control" autocomplete="off" placeholder="Cloudflare zone identifier">
+              <small class="form-hint">Current: <span id="current-cf-zone">not configured</span></small>
+            </div>
+
+            <div class="form-group">
+              <label for="settings-vt">VirusTotal API Key:</label>
+              <input type="password" id="settings-vt" class="form-control" autocomplete="off" placeholder="VirusTotal API key">
+              <small class="form-hint">Current: <span id="current-vt">not configured</span></small>
+            </div>
+
+            <div class="form-group">
+              <label for="settings-abuseipdb">AbuseIPDB API Key:</label>
+              <input type="password" id="settings-abuseipdb" class="form-control" autocomplete="off" placeholder="AbuseIPDB API key">
+              <small class="form-hint">Current: <span id="current-abuseipdb">not configured</span></small>
+            </div>
+
+            <div class="form-group">
+              <label for="settings-slack">Slack Webhook URL:</label>
+              <input type="password" id="settings-slack" class="form-control" autocomplete="off" placeholder="https://hooks.slack.com/services/...">
+              <small class="form-hint">Current: <span id="current-slack">not configured</span></small>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-settings">Save Keys</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution Details Modal -->
+    <div class="modal-backdrop" id="details-modal" style="display: none;">
+      <div class="modal modal-lg">
+        <div class="window-header">
+          <span class="window-title">Execution Details</span>
+          <div class="window-controls">
+            <button class="modal-close" id="btn-close-details" title="Close">&times;</button>
+          </div>
+        </div>
+        <div class="modal-body" id="details-modal-body">
+          <!-- Filled by JS -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
