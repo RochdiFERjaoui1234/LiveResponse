@@ -60,25 +60,42 @@ It operates strictly on an **isolated management server/VM**, monitoring incomin
 
 ## 🚀 Quick Start
 
-### On Linux / macOS / Management VM
+### One-Click Download (Click and Run)
+
+Prebuilt, ready-to-run binaries ship in this repository — no Python, no build step:
+
+| File | Platform | How to use |
+| :--- | :--- | :--- |
+| `LiveResponse.exe` | Windows | Download, place next to `config/` & `playbooks/` (or the whole repo), double-click. Server starts and the console opens in your browser. |
+| `live-response` (built via CI) | Linux | Run the `build-binaries` workflow or `./scripts/build_exe.sh`; then `./live-response`. |
+| `var/bin/super-agent.exe` | Production host (Windows) | Compiled Go proxy agent; see section below. |
+| `var/bin/super-agent` | Production host (Linux) | Compiled Go proxy agent; `chmod +x` then run. |
+
+Console URL after launch: `http://localhost:8088`
+
+### Build From Source
+
+#### On Linux / macOS / Management VM
 
 ```bash
 # 1. Run automated installer
 ./scripts/install.sh
 
-# 2. Launch Super SOAR
+# 2. Launch Live Response
 ./scripts/run.sh
 ```
 
-### On Windows
+#### On Windows
 
 ```powershell
 # 1. Run PowerShell installer
 .\scripts\install.ps1
 
-# 2. Launch Super SOAR console
-.\scripts\run.ps1
+# 2. Launch or build the runtime
+.\scripts\run.ps1            # run from source
+.\scripts\build_exe.ps1      # build LiveResponse.exe
 ```
+
 
 Access the interactive dashboard in your browser:
 👉 **`http://localhost:8088`**

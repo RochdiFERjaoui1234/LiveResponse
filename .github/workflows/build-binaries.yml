@@ -1,0 +1,35 @@
+name: build-binaries
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: pyinstaller --name live-response --onefile --add-data "soar/static:soar/static" run.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-response-linux
+          path: dist/live-response
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: pyinstaller --name LiveResponse --onefile --noconsole --add-data "soar/static;soar/static" run.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveResponse-windows
+          path: dist/LiveResponse.exe

@@ -1,11 +1,12 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-var/
+var/*
+!var/bin/
+!var/bin/super-agent
+!var/bin/super-agent.exe
 dist/
 build/
 *.spec
-LiveResponse.exe
-live-response
-config/secrets.local.yaml
+LiveResponseDebug.exe
 .venv/
