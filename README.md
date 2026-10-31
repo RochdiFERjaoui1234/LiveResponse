@@ -1,4 +1,4 @@
-# ⚡ SUPER SOAR — Autonomous Out-of-Band Incident Responder
+# ⚡ LiveResponse — Autonomous Out-of-Band Incident Responder
 
 **Live Response** (formerly Super SOAR) is an autonomous, out-of-band **Security Orchestration, Automation, and Response (SOAR)** platform engineered to protect critical infrastructure, production servers, and web applications.
 
